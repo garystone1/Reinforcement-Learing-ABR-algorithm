@@ -12,7 +12,9 @@ init_screen = get_screen()
 _, _, screen_height, screen_width = init_screen.shape
 
 # Get number of actions from gym action space
-n_actions = env.action_space.n
+bitrate_actions = 4
+replay_buffer_actions = 2
+latency_limits = 10
 
 policy_net = DQN(screen_height, screen_width, n_actions).to(device)
 target_net = DQN(screen_height, screen_width, n_actions).to(device)
@@ -26,7 +28,27 @@ memory = ReplayMemory(10000)
 steps_done = 0
 
 
-def select_action(state):
+# def select_action(state):
+#     global steps_done
+#     sample = random.random()
+#     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+#         math.exp(-1. * steps_done / EPS_DECAY)
+#     steps_done += 1
+#     if sample > eps_threshold:
+#         with torch.no_grad():
+#             # t.max(1) will return largest column value of each row.
+#             # second column on max result is index of where max element was
+#             # found, so we pick action with the larger expected reward.
+#             return policy_net(state).max(1)[1].view(1, 1)
+#     else:
+#         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
+
+
+# episode_durations = []
+
+def select_action(time,time_interval, send_data_size, chunk_len, rebuf, buffer_size, play_time_len,end_delay,\
+                cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag, \
+                buffer_flag, cdn_flag, skip_flag,end_of_video):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
@@ -34,13 +56,9 @@ def select_action(state):
     steps_done += 1
     if sample > eps_threshold:
         with torch.no_grad():
-            # t.max(1) will return largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
             return policy_net(state).max(1)[1].view(1, 1)
     else:
-        return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
-
+        return torch.tensor([[random.randrange(bitrate_actions)], [random.randrange(replay_buffer_actions)], [random.randrange(latency_limits)/10]], device=device, dtype=torch.long)
 
 episode_durations = []
 
