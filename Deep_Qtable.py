@@ -33,7 +33,9 @@ class Net(nn.Module):
         self.out = nn.Linear(10, N_ACTIONS)
         self.out.weight.data.normal_(0, 0.1)   # initialization
 
-    def forward(self, x):
+    def forward(self,  time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
+            cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag,\
+            buffer_flag, cdn_flag, skip_flag,end_of_video):
         x = self.fc1(x)
         x = F.relu(x)
         actions_value = self.out(x)
@@ -54,7 +56,9 @@ class DQN(object):
         buffer_flag, cdn_flag, skip_flag,end_of_video):
         # 这里只输入一个 sample
         if np.random.uniform() < EPSILON:   # 选最优动作
-            actions_value = self.eval_net.forward(x)
+            actions_value = self.eval_net.forward(time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
+                cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag,\
+                buffer_flag, cdn_flag, skip_flag,end_of_video)
             action = torch.max(actions_value, 1)[1].data.numpy()[0, 0]     # return the argmax
         else:   # 选随机动作
             action = np.random.randint(0, N_ACTIONS)
@@ -94,6 +98,67 @@ class DQN(object):
 
 dqn = DQN() # 定义 DQN 系统
 
+# -- Configuration variables --
+# Edit these variables to configure the simulator
+# Change which set of video trace to use: AsianCup_China_Uzbekistan, Fengtimo_2018_11_3, game, room, sports, YYF_2018_08_12
+VIDEO_TRACE = testcase[0]
+
+# Change which set of network trace to use: 'fixed' 'low' 'medium' 'high'
+NETWORK_TRACE = testcase[1]
+
+# Turn on and off logging.  Set to 'True' to create log files.
+# Set to 'False' would speed up the simulator.
+DEBUG = testcase[2]
+
+# Control the subdirectory where log files will be stored.
+LOG_FILE_PATH = './log/'
+    
+# create result directory
+if not os.path.exists(LOG_FILE_PATH):
+    os.makedirs(LOG_FILE_PATH)
+
+print(f"{VIDEO_TRACE},{NETWORK_TRACE}: Start")
+# -- End Configuration --
+# You shouldn't need to change the rest of the code here.
+
+network_trace_dir = './dataset/network_trace/' + NETWORK_TRACE + '/'
+video_trace_prefix = './dataset/video_trace/' + VIDEO_TRACE + '/frame_trace_'
+
+# load the trace
+all_cooked_time, all_cooked_bw, all_file_names = load_trace.load_trace(network_trace_dir)
+#random_seed 
+random_seed = 2
+count = 0
+trace_count = 1
+FPS = 25
+frame_time_len = 0.04
+reward_all_sum = 0
+run_time = 0
+net_env = fixed_env.Environment(all_cooked_time=all_cooked_time, all_cooked_bw=all_cooked_bw,
+                                random_seed=random_seed, logfile_path=LOG_FILE_PATH,
+                                VIDEO_SIZE_FILE=video_trace_prefix, Debug = DEBUG)
+
+BIT_RATE      = [500.0,850.0,1200.0,1850.0] # kpbs
+TARGET_BUFFER = [0.5,1.0]   # seconds
+# ABR setting
+RESEVOIR = 0.5
+CUSHION  = 2
+
+cnt = 0
+# defalut setting
+last_bit_rate = 0
+bit_rate = 0
+target_buffer = 0
+latency_limit = 4
+
+# QOE setting
+reward_frame = 0
+reward_all = 0
+SMOOTH_PENALTY= 0.02
+REBUF_PENALTY = 1.85
+LANTENCY_PENALTY = 0.005
+SKIP_PENALTY = 0.5
+
 for i_episode in range(400):
     s = env.reset()
     while True:
@@ -103,8 +168,27 @@ for i_episode in range(400):
             buffer_flag, cdn_flag, skip_flag,end_of_video)
 
         # 选动作, 得到环境反馈
-        s_, r, done, info = env.step(a)
+        biterate = int(a/20);
+        replay_buffer = a%2
+        latency_limit = int((a%20)/2)/10
+        next_time, next_time_interval, next_send_data_size, next_chunk_len, next_rebuf, next_buffer_size, next_play_time_len, next_end_delay,\
+            next_cdn_newest_id, next_download_id, next_cdn_has_frame, next_skip_frame_time_len, next_decision_flag,\
+            next_buffer_flag, next_cdn_flag, next_skip_flag, next_end_of_video = net_env.get_video_frame(bit_rate,target_buffer, latency_limit)
 
+        # QOE setting 
+        if end_delay <=1.0:
+            LANTENCY_PENALTY = 0.005
+        else:
+            LANTENCY_PENALTY = 0.01
+            
+        if not cdn_flag:
+            reward = frame_time_len * float(BIT_RATE[bit_rate]) / 1000  - REBUF_PENALTY * rebuf - LANTENCY_PENALTY  * end_delay - SKIP_PENALTY * skip_frame_time_len 
+        else:
+            reward = -(REBUF_PENALTY * rebuf)
+        if decision_flag or end_of_video:
+            # reward formate = play_time * BIT_RATE - 4.3 * rebuf - 1.2 * end_delay
+            reward += -1 * SMOOTH_PENALTY * (abs(BIT_RATE[bit_rate] - BIT_RATE[last_bit_rate]) / 1000)
+        
         # 修改 reward, 使 DQN 快速学习
         x, x_dot, theta, theta_dot = s_
         r1 = (env.x_threshold - abs(x)) / env.x_threshold - 0.8
