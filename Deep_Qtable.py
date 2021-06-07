@@ -10,11 +10,20 @@ LR = 0.01                   # learning rate
 EPSILON = 0.9               # 最优选择动作百分比
 GAMMA = 0.9                 # 奖励递减参数
 TARGET_REPLACE_ITER = 100   # Q 现实网络的更新频率
-MEMORY_CAPACITY = 2000      # 记忆库大小
-env = gym.make('CartPole-v0')   # 立杆子游戏
-env = env.unwrapped
-N_ACTIONS = env.action_space.n  # 杆子能做的动作
-N_STATES = env.observation_space.shape[0]   # 杆子能获取的环境信息数
+MEMORY_CAPACITY = 10000      # 记忆库大小
+
+# env = gym.make('CartPole-v0')   # 立杆子游戏
+# env = env.unwrapped
+# N_ACTIONS = env.action_space.n  # 杆子能做的动作
+# N_STATES = env.observation_space.shape[0]   # 杆子能获取的环境信息数
+N_BITRATE = 4
+N_REPLAY_BUFFER = 2
+N_LATENCY = 10
+N_ACTIONS = N_BITRATE * NREPLAY * N_LATENCY
+time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
+    cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag,\
+    buffer_flag, cdn_flag, skip_flag,end_of_video = net_env.get_video_frame(bit_rate,target_buffer, latency_limit)
+N_STATES = 15
 
 class Net(nn.Module):
     def __init__(self, ):
@@ -40,8 +49,9 @@ class DQN(object):
         self.optimizer = torch.optim.Adam(self.eval_net.parameters(), lr=LR)    # torch 的优化器
         self.loss_func = nn.MSELoss()   # 误差公式
 
-    def choose_action(self, x):
-        x = torch.unsqueeze(torch.FloatTensor(x), 0)
+    def choose_action(self, time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
+        cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag,\
+        buffer_flag, cdn_flag, skip_flag,end_of_video):
         # 这里只输入一个 sample
         if np.random.uniform() < EPSILON:   # 选最优动作
             actions_value = self.eval_net.forward(x)
@@ -88,7 +98,9 @@ for i_episode in range(400):
     s = env.reset()
     while True:
         env.render()    # 显示实验动画
-        a = dqn.choose_action(s)
+        a = dqn.choose_action(time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
+            cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag,\
+            buffer_flag, cdn_flag, skip_flag,end_of_video)
 
         # 选动作, 得到环境反馈
         s_, r, done, info = env.step(a)
