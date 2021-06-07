@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import gym
+
+import fixed_env as fixed_env
+import load_trace as load_trace
+
+import time as tm
+import os, sys
+import multiprocessing as mp
 
 # 超参数
 BATCH_SIZE = 32
@@ -22,7 +28,7 @@ N_LATENCY = 10
 N_ACTIONS = N_BITRATE * NREPLAY * N_LATENCY
 time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
     cdn_newest_id, download_id, cdn_has_frame,skip_frame_time_len, decision_flag,\
-    buffer_flag, cdn_flag, skip_flag,end_of_video = net_env.get_video_frame(bit_rate,target_buffer, latency_limit)
+    buffer_flag, cdn_flag, skip_flag,end_of_video = 0
 N_STATES = 15
 
 class Net(nn.Module):
@@ -182,50 +188,70 @@ def training(training_set):
             next_buffer_flag, next_cdn_flag, next_skip_flag, next_end_of_video])
         if dqn.memory_counter > MEMORY_CAPACITY:
             dqn.learn() # 记忆库满了就进行学习
+            if trace_count >= len(all_file_names):
+                break
 
-        if done:    # 如果回合结束, 进入下回合
-            break
+        if end_of_video:
+            # print("network traceID, network_reward, avg_running_time", trace_count, reward_all, call_time_sum/cnt)
+            reward_all_sum += reward_all
+            run_time += call_time_sum / cnt
             
-#         time = next_time
-#         time_interval = next_time_interval
-#         send_data_size = next_send_data_size
-#         chunk_len = next_chunk_len
-#         rebuf = next_rebuf
-#         buffer_size = next_buffer_size
-#         play_time_len = next_play_time_len
-#         end_delay = next_end_delay
-#         cdn_newest_id = next_cdn_newest_id
-#         download_id = next_download_id
-#         cdn_has_frame,next_
-#         skip_frame_time_len, next_
-#         decision_flag next_
+            trace_count += 1
+            cnt = 0                    #algorithm processing time.
+            call_time_sum = 0
+            last_bit_rate = 0
+            reward_all = 0
+            bit_rate = 0
+            target_buffer = 0
             
-#         buffer_flag next_
-#         cdn_flag next_ cdn_flag
-#         kip_flag next_kip_flag
-#         end_of_video next_end_of_video
+        time = next_time
+        time_interval = next_time_interval
+        send_data_size = next_send_data_size
+        chunk_len = next_chunk_len
+        rebuf = next_rebuf
+        buffer_size = next_buffer_size
+        play_time_len = next_play_time_len
+        end_delay = next_end_delay
+        cdn_newest_id = next_cdn_newest_id
+        download_id = next_download_id
+        cdn_has_frame = next_cdn_has_frame
+        skip_frame_time_len = next_skip_frame_time_len
+        decision_flag = next_decision_flag
+        buffer_flag = next_buffer_flag
+        cdn_flag = next_cdn_flag
+        kip_flag = next_kip_flag
+        end_of_video = next_end_of_video
+        reward_all += reward
+    print(f"{VIDEO_TRACE},{NETWORK_TRACE}: Done")
+    return [reward_all_sum / trace_count, run_time / trace_count]
 
 dqn = DQN() # 定义 DQN 系统
-
-for i_episode in range(400):
-    s = env.reset()
-    while True:
-        r
-        
-        
-        # 修改 reward, 使 DQN 快速学习
-        x, x_dot, theta, theta_dot = s_
-        r1 = (env.x_threshold - abs(x)) / env.x_threshold - 0.8
-        r2 = (env.theta_threshold_radians - abs(theta)) / env.theta_threshold_radians - 0.5
-        r = r1 + r2
-
-        # 存记忆
-        dqn.store_transition(s, a, r, s_)
-
-        if dqn.memory_counter > MEMORY_CAPACITY:
-            dqn.learn() # 记忆库满了就进行学习
-
-        if done:    # 如果回合结束, 进入下回合
-            break
-
-        s = s_
+if __name__ == "__main__":
+    if(sys.argv[1]=="all"):
+        video_traces = [
+            'AsianCup_China_Uzbekistan',
+            'Fengtimo_2018_11_3', 
+            'game', 
+            'room', 
+            'sports', 
+            'YYF_2018_08_12'
+        ]
+        netwrok_traces = [
+            'fixed',
+            'low',
+            'medium',
+            'high'
+        ]
+    else:
+        video_traces = [sys.argv[1]]
+        netwrok_traces = [sys.argv[2]]
+    debug = False
+    training_set = []
+    for video_trace in video_traces:
+        for netwrok_trace in netwrok_traces:
+            training_set.append([video_trace, netwrok_trace, debug])
+    N = mp.cpu_count()
+    with mp.Pool(processes=N) as p:
+        results = p.map(training,training_set)
+    print(results)
+    print("score: ", np.mean(results ,axis = 0))
