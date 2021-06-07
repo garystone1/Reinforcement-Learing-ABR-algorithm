@@ -34,9 +34,9 @@ N_STATES = 15
 class Net(nn.Module):
     def __init__(self, ):
         super(Net, self).__init__()
-        self.fc1 = nn.Linear(N_STATES, 10)
+        self.fc1 = nn.Linear(N_STATES, 100)
         self.fc1.weight.data.normal_(0, 0.1)   # initialization
-        self.out = nn.Linear(10, N_ACTIONS)
+        self.out = nn.Linear(100, N_ACTIONS)
         self.out.weight.data.normal_(0, 0.1)   # initialization
 
     def forward(self,  time,time_interval, send_data_size, chunk_len,rebuf, buffer_size, play_time_len,end_delay,\
